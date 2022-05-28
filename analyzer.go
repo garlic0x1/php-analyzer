@@ -158,14 +158,24 @@ func (a *Analyzer) ExprFunctionCall(n *ast.ExprFunctionCall) {
 }
 
 func (a *Analyzer) ExprMethodCall(n *ast.ExprMethodCall) {
-	id, ok := n.Method.(*ast.Identifier)
+	obj, ok := n.Var.(*ast.ExprVariable)
+	if !ok {
+		return
+	}
+	cid, ok := obj.Name.(*ast.Identifier)
+	if !ok {
+		return
+	}
+	mid, ok := n.Method.(*ast.Identifier)
 	if !ok {
 		return
 	}
 
-	name := string(id.Value)
+	methodname := string(mid.Value)
+	fullname := string(cid.Value) + "->" + methodname
 
-	a.VarVertex(name)
+	a.VarVertex(fullname)
+	a.VarVertex(methodname)
 }
 
 // auxiliary funcs

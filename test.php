@@ -8,7 +8,11 @@ Class Data {
 	}
 }
 
+if (($_GET)) {
+	echo $_GET;
+}
+
 $d = new Data;
 $t = $d->dangerous($_GET);
-query($t);
+query((int)$t);
 ?>

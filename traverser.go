@@ -119,7 +119,9 @@ func (t *Traverser) StmtBreak(n *ast.StmtBreak) {
 func (t *Traverser) StmtCase(n *ast.StmtCase) {
 	n.Accept(t.v)
 
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	t.Traverse(n.Cond)
+	_ = t.v.Pop()
 	for _, nn := range n.Stmts {
 		nn.Accept(t)
 	}
@@ -271,10 +273,15 @@ func (t *Traverser) StmtDo(n *ast.StmtDo) {
 	n.Accept(t.v)
 
 	t.Traverse(n.Stmt)
+
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	t.Traverse(n.Cond)
+	_ = t.v.Pop()
 }
 
 func (t *Traverser) StmtEcho(n *ast.StmtEcho) {
+	t.v.Push(Item{Name: "echo", Type: "sink", Vertex: n})
+	defer t.v.Pop()
 	n.Accept(t.v)
 
 	for _, nn := range n.Exprs {
@@ -291,7 +298,9 @@ func (t *Traverser) StmtElse(n *ast.StmtElse) {
 func (t *Traverser) StmtElseIf(n *ast.StmtElseIf) {
 	n.Accept(t.v)
 
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	t.Traverse(n.Cond)
+	_ = t.v.Pop()
 	t.Traverse(n.Stmt)
 }
 
@@ -315,9 +324,11 @@ func (t *Traverser) StmtFor(n *ast.StmtFor) {
 	for _, nn := range n.Init {
 		nn.Accept(t)
 	}
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	for _, nn := range n.Cond {
 		nn.Accept(t)
 	}
+	_ = t.v.Pop()
 	for _, nn := range n.Loop {
 		nn.Accept(t)
 	}
@@ -376,7 +387,9 @@ func (t *Traverser) StmtHaltCompiler(n *ast.StmtHaltCompiler) {
 func (t *Traverser) StmtIf(n *ast.StmtIf) {
 	n.Accept(t.v)
 
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	t.Traverse(n.Cond)
+	_ = t.v.Pop()
 	t.Traverse(n.Stmt)
 	for _, nn := range n.ElseIf {
 		nn.Accept(t)
@@ -479,7 +492,9 @@ func (t *Traverser) StmtStmtList(n *ast.StmtStmtList) {
 func (t *Traverser) StmtSwitch(n *ast.StmtSwitch) {
 	n.Accept(t.v)
 
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	t.Traverse(n.Cond)
+	_ = t.v.Pop()
 	for _, nn := range n.Cases {
 		nn.Accept(t)
 	}
@@ -583,7 +598,9 @@ func (t *Traverser) StmtUseDeclaration(n *ast.StmtUse) {
 func (t *Traverser) StmtWhile(n *ast.StmtWhile) {
 	n.Accept(t.v)
 
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	t.Traverse(n.Cond)
+	_ = t.v.Pop()
 	t.Traverse(n.Stmt)
 }
 
@@ -863,6 +880,9 @@ func (t *Traverser) ExprInstanceOf(n *ast.ExprInstanceOf) {
 }
 
 func (t *Traverser) ExprIsset(n *ast.ExprIsset) {
+	t.v.Push(Item{Name: "isset", Type: "break", Vertex: n})
+	defer t.v.Pop()
+
 	n.Accept(t.v)
 
 	for _, nn := range n.Vars {
@@ -1073,6 +1093,8 @@ func (t *Traverser) ExprRequireOnce(n *ast.ExprRequireOnce) {
 }
 
 func (t *Traverser) ExprShellExec(n *ast.ExprShellExec) {
+	t.v.Push(Item{Name: "shell_exec", Type: "sink", Vertex: n})
+	defer t.v.Pop()
 	n.Accept(t.v)
 
 	for _, nn := range n.Parts {
@@ -1100,7 +1122,10 @@ func (t *Traverser) ExprStaticPropertyFetch(n *ast.ExprStaticPropertyFetch) {
 func (t *Traverser) ExprTernary(n *ast.ExprTernary) {
 	n.Accept(t.v)
 
+	t.v.Push(Item{Name: "condition", Type: "break", Vertex: n})
 	t.Traverse(n.Cond)
+	_ = t.v.Pop()
+
 	t.Traverse(n.IfTrue)
 	t.Traverse(n.IfFalse)
 }
@@ -1456,18 +1481,27 @@ func (t *Traverser) ExprCastArray(n *ast.ExprCastArray) {
 }
 
 func (t *Traverser) ExprCastBool(n *ast.ExprCastBool) {
+	t.v.Push(Item{Name: "(bool)", Type: "break", Vertex: n})
+	defer t.v.Pop()
+
 	n.Accept(t.v)
 
 	t.Traverse(n.Expr)
 }
 
 func (t *Traverser) ExprCastDouble(n *ast.ExprCastDouble) {
+	t.v.Push(Item{Name: "(double)", Type: "break", Vertex: n})
+	defer t.v.Pop()
+
 	n.Accept(t.v)
 
 	t.Traverse(n.Expr)
 }
 
 func (t *Traverser) ExprCastInt(n *ast.ExprCastInt) {
+	t.v.Push(Item{Name: "(int)", Type: "break", Vertex: n})
+	defer t.v.Pop()
+
 	n.Accept(t.v)
 
 	t.Traverse(n.Expr)
@@ -1486,6 +1520,9 @@ func (t *Traverser) ExprCastString(n *ast.ExprCastString) {
 }
 
 func (t *Traverser) ExprCastUnset(n *ast.ExprCastUnset) {
+	t.v.Push(Item{Name: "(unset)", Type: "break", Vertex: n})
+	defer t.v.Pop()
+
 	n.Accept(t.v)
 
 	t.Traverse(n.Expr)

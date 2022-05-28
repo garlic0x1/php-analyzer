@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/VKCOM/noverify/src/php/parseutil"
 	"github.com/VKCOM/php-parser/pkg/ast"
@@ -49,8 +50,10 @@ func main() {
 	fyaml := flag.Bool("yaml", false, "Output as YAML, (JSON by default)")
 	flag.Parse()
 
+	t := time.Now()
+
 	defer func() {
-		log.Printf("Scanned %d files\nFound %d vulns\n", Files, Vulns)
+		log.Printf("Scanned %d files\tFound %d vulns\tIn time %v", Files, Vulns, time.Since(t))
 	}()
 
 	go reader()
@@ -61,8 +64,8 @@ func main() {
 
 func workers(depth int, n int, datafile string) {
 	var wg sync.WaitGroup
-	wg.Add(n)
 	for i := 0; i < n; i++ {
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
