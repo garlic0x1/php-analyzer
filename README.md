@@ -1,4 +1,6 @@
 # dataflow-analyzer
+Current performance:  
+`2022/05/28 11:29:04 Scanned 997 files    Found 144 vulns    In time 1m33.712987818s`  
 
 Example:
 ```
