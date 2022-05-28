@@ -1,21 +1,13 @@
 package main
 
 import (
-	"log"
-
 	"github.com/VKCOM/php-parser/pkg/ast"
 	"github.com/VKCOM/php-parser/pkg/visitor/traverser"
 )
 
-type Context struct {
-	Class string
-	Block string
-}
-
 type Traverser struct {
-	v              *Analyzer
-	CurrentContext Context
-	ResolvedNames  map[string]ast.Vertex
+	v             *Analyzer
+	ResolvedNames map[string]ast.Vertex
 }
 
 func NewTraverser(v *Analyzer) *Traverser {
@@ -175,8 +167,8 @@ func (t *Traverser) EnumCase(n *ast.EnumCase) {
 func (t *Traverser) StmtClass(n *ast.StmtClass) {
 	name, ok := n.Name.(*ast.Identifier)
 	if ok {
-		t.CurrentContext.Class = string(name.Value)
-		defer func() { t.CurrentContext.Class = "" }()
+		t.v.CurrentContext.Class = string(name.Value)
+		defer func() { t.v.CurrentContext.Class = "" }()
 	}
 
 	n.Accept(t.v)
@@ -217,8 +209,8 @@ func (t *Traverser) StmtClassConstList(n *ast.StmtClassConstList) {
 func (t *Traverser) StmtClassMethod(n *ast.StmtClassMethod) {
 	name, ok := n.Name.(*ast.Identifier)
 	if ok {
-		t.CurrentContext.Block = string(name.Value)
-		defer func() { t.CurrentContext.Block = "" }()
+		t.v.CurrentContext.Block = string(name.Value)
+		defer func() { t.v.CurrentContext.Block = "" }()
 	}
 
 	n.Accept(t.v)
@@ -344,8 +336,8 @@ func (t *Traverser) StmtForeach(n *ast.StmtForeach) {
 func (t *Traverser) StmtFunction(n *ast.StmtFunction) {
 	name, ok := n.Name.(*ast.Identifier)
 	if ok {
-		t.CurrentContext.Block = string(name.Value)
-		defer func() { t.CurrentContext.Block = "" }()
+		t.v.CurrentContext.Block = string(name.Value)
+		defer func() { t.v.CurrentContext.Block = "" }()
 	}
 
 	n.Accept(t.v)
@@ -453,7 +445,7 @@ func (t *Traverser) StmtPropertyList(n *ast.StmtPropertyList) {
 }
 
 func (t *Traverser) StmtReturn(n *ast.StmtReturn) {
-	t.v.Push(Item{Name: t.CurrentContext.Block, Type: "assign", Scope: Context{Class: "", Block: ""}, Vertex: n})
+	t.v.Push(Item{Name: t.v.CurrentContext.Block, Type: "assign", Scope: Context{Class: "*", Block: "*"}, Vertex: n})
 	defer t.v.Pop()
 
 	n.Accept(t.v)
@@ -822,7 +814,7 @@ func (t *Traverser) ExprFunctionCall(n *ast.ExprFunctionCall) {
 				continue
 			}
 
-			t.v.Push(Item{Name: string(id.Value), Type: "assign", Scope: Context{Class: "", Block: name}, Vertex: n})
+			t.v.Push(Item{Name: string(id.Value), Type: "assign", Scope: Context{Class: "*", Block: name}, Vertex: n})
 
 			nn.Accept(t)
 
@@ -887,12 +879,121 @@ func (t *Traverser) ExprList(n *ast.ExprList) {
 }
 
 func (t *Traverser) ExprMethodCall(n *ast.ExprMethodCall) {
-	n.Accept(t.v)
+	id, ok := n.Method.(*ast.Identifier)
+	if !ok {
+		return
+	}
 
-	t.Traverse(n.Var)
-	t.Traverse(n.Method)
-	for _, nn := range n.Args {
-		nn.Accept(t)
+	name := string(id.Value)
+
+	var args []int
+	callType := "filter"
+
+	for _, vuln := range t.v.Data {
+		for _, sink := range vuln.Sinks {
+			if name == sink {
+				callType = "sink"
+			}
+		}
+	}
+
+	for _, vuln := range t.v.Data {
+		for str, arg := range vuln.Args {
+			if name == str {
+				callType = "argument"
+				args = arg
+			}
+		}
+	}
+
+	vert, ok := t.ResolvedNames[name]
+	if ok {
+		callType = "custom"
+	}
+
+	switch callType {
+	case "filter":
+		t.v.Push(Item{Name: name, Type: "filter", Vertex: n})
+
+		n.Accept(t.v)
+
+		t.Traverse(n.Var)
+		t.Traverse(n.Method)
+		for _, nn := range n.Args {
+			nn.Accept(t)
+		}
+
+		_ = t.v.Pop()
+	case "sink":
+		t.v.Push(Item{Name: name, Type: "sink", Vertex: n})
+
+		n.Accept(t.v)
+
+		t.Traverse(n.Var)
+		t.Traverse(n.Method)
+		for _, nn := range n.Args {
+			nn.Accept(t)
+		}
+
+		_ = t.v.Pop()
+	case "custom":
+		n.Accept(t.v)
+
+		t.Traverse(n.Var)
+		t.Traverse(n.Method)
+		for i, nn := range n.Args {
+			function, ok := vert.(*ast.StmtClassMethod)
+			if !ok {
+				nn.Accept(t)
+				continue
+			}
+			if len(function.Params) <= i {
+				nn.Accept(t)
+				continue
+			}
+			param, ok := function.Params[i].(*ast.Parameter)
+			if !ok {
+				nn.Accept(t)
+				continue
+			}
+			variable, ok := param.Var.(*ast.ExprVariable)
+			if !ok {
+				nn.Accept(t)
+				continue
+			}
+			id, ok := variable.Name.(*ast.Identifier)
+			if !ok {
+				nn.Accept(t)
+				continue
+			}
+
+			t.v.Push(Item{Name: string(id.Value), Type: "assign", Scope: Context{Class: "*", Block: name}, Vertex: n})
+
+			nn.Accept(t)
+
+			_ = t.v.Pop()
+		}
+
+	case "argument":
+		n.Accept(t.v)
+
+		t.Traverse(n.Method)
+		t.Traverse(n.Var)
+
+		for i, nn := range n.Args {
+			for _, j := range args {
+				if i == j {
+					// sink arg
+					t.v.Push(Item{Name: name, Type: "sink", Vertex: n})
+
+					nn.Accept(t)
+
+					_ = t.v.Pop()
+				} else {
+					nn.Accept(t)
+				}
+			}
+		}
 	}
 }
 
@@ -1043,7 +1144,7 @@ func (t *Traverser) ExprAssign(n *ast.ExprAssign) {
 			break
 		}
 
-		t.v.Push(Item{Name: string(name.Value), Type: "assign", Scope: t.CurrentContext, Vertex: n})
+		t.v.Push(Item{Name: string(name.Value), Type: "assign", Scope: t.v.CurrentContext, Vertex: n})
 		defer t.v.Pop()
 	case *ast.ExprPropertyFetch:
 		name, ok := variable.Prop.(*ast.Identifier)
@@ -1051,8 +1152,7 @@ func (t *Traverser) ExprAssign(n *ast.ExprAssign) {
 			break
 		}
 
-		t.v.Push(Item{Name: string(name.Value), Type: "assign", Scope: Context{Block: "", Class: t.CurrentContext.Class}, Vertex: n})
-		log.Println(t.v.DumpStack)
+		t.v.Push(Item{Name: string(name.Value), Type: "assign", Scope: Context{Block: "*", Class: t.v.CurrentContext.Class}, Vertex: n})
 		defer t.v.Pop()
 	}
 

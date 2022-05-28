@@ -17,12 +17,15 @@ import (
 	"github.com/VKCOM/noverify/src/php/parseutil"
 	"github.com/VKCOM/php-parser/pkg/ast"
 	"github.com/VKCOM/php-parser/pkg/visitor/printer"
+	"gopkg.in/yaml.v2"
 )
 
 var (
 	Queue   = make(chan Task)
 	Results = make(chan Result)
 	sm      sync.Map
+	Files   = 0
+	Vulns   = 0
 )
 
 type Task struct {
@@ -34,6 +37,7 @@ type Result struct {
 	Vertex    ast.Vertex
 	Type      string
 	Code      string
+	Stack     string
 	LastTaint Taint
 	Filename  string
 }
@@ -42,11 +46,17 @@ func main() {
 	depth := flag.Int("d", 5, "Number of times to traverse the tree (Tracing through function calls requires multiple passes)")
 	threads := flag.Int("t", 10, "Number of goroutines to use")
 	datafile := flag.String("f", "data.yaml", "Specify a data file of sources, sinks, and filters")
+	fyaml := flag.Bool("yaml", false, "Output as YAML, (JSON by default)")
 	flag.Parse()
+
+	defer func() {
+		log.Printf("Scanned %d files\nFound %d vulns\n", Files, Vulns)
+	}()
 
 	go reader()
 	go workers(*depth, *threads, *datafile)
-	writer()
+	writer(*fyaml)
+
 }
 
 func workers(depth int, n int, datafile string) {
@@ -70,6 +80,12 @@ func workers(depth int, n int, datafile string) {
 }
 
 func reader() {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("recovering", err)
+			reader()
+		}
+	}()
 	s := bufio.NewScanner(os.Stdin)
 	for s.Scan() {
 		filename := s.Text()
@@ -86,20 +102,26 @@ func reader() {
 			continue
 		}
 
+		Files++
+
 		Queue <- Task{Filename: filename, Vertex: root}
 	}
 	close(Queue)
 }
 
-func writer() {
+func writer(fyaml bool) {
 	for result := range Results {
 		defer func() {
 			if err := recover(); err != nil {
-				writer()
+				writer(fyaml)
 			}
 		}()
 
-		var taintPath []string
+		type tt struct {
+			Stack string
+			Code  string
+		}
+		var taintPath []tt
 		taint := result.LastTaint
 
 		o := bytes.NewBufferString("")
@@ -110,12 +132,12 @@ func writer() {
 		code := strings.TrimSpace(o.String())
 
 		type output struct {
-			File      string
-			Type      string
-			Code      string
-			TaintPath []string
+			File string
+			Type string
+			Path []tt
 		}
 
+		taintPath = append(taintPath, tt{Code: code, Stack: result.Stack})
 		for taint.Vertex != nil {
 			o := bytes.NewBufferString("")
 			//d := dumper.NewDumper(o)
@@ -123,21 +145,38 @@ func writer() {
 			//result.Vertex.Accept(f)
 			taint.Vertex.Accept(p)
 			taintstring := strings.TrimSpace(o.String())
-			taintPath = append(taintPath, taintstring)
+			taintPath = append(taintPath, tt{Code: taintstring, Stack: taint.Stack})
+
 			taint = *taint.Parent
 		}
 
-		bytes, err := json.Marshal(output{
-			File:      result.Filename,
-			Type:      result.Type,
-			Code:      code,
-			TaintPath: taintPath,
-		})
-		if err != nil {
-			log.Println(err)
+		var (
+			bytes []byte
+			err   error
+		)
+
+		if !(fyaml) {
+			bytes, err = json.Marshal(output{
+				File: result.Filename,
+				Type: result.Type,
+				Path: taintPath,
+			})
+			if err != nil {
+				log.Println(err)
+			}
+		} else {
+			bytes, err = yaml.Marshal(output{
+				File: result.Filename,
+				Type: result.Type,
+				Path: taintPath,
+			})
+			if err != nil {
+				log.Println(err)
+			}
 		}
 
 		if isUnique(code) {
+			Vulns++
 			fmt.Println(string(bytes))
 		}
 	}

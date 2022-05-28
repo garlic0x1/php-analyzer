@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -9,6 +8,11 @@ import (
 	"github.com/VKCOM/php-parser/pkg/visitor"
 	"gopkg.in/yaml.v2"
 )
+
+type Context struct {
+	Class string
+	Block string
+}
 
 type Vuln struct {
 	Sources []string
@@ -23,6 +27,7 @@ type Taint struct {
 	Scope  Context
 	Vertex ast.Vertex
 	Parent *Taint
+	Stack  string
 }
 
 type Item struct {
@@ -35,16 +40,16 @@ type Item struct {
 type Analyzer struct {
 	visitor.Null
 
-	CallStack []Item
-	Tainted   map[Taint]string
-	Data      map[string]Vuln
-	Filename  string
+	CallStack      []Item
+	Tainted        []Taint
+	CurrentContext Context
+	Data           map[string]Vuln
+	Filename       string
 }
 
 func NewAnalyzer(filename string, datafile string) *Analyzer {
 	var analyzer = &Analyzer{
 		Filename: filename,
-		Tainted:  make(map[Taint]string),
 	}
 
 	analyzer.LoadData(datafile)
@@ -66,11 +71,12 @@ func (a *Analyzer) Top() Item {
 	return a.CallStack[0]
 }
 
-func (a *Analyzer) DumpStack() string {
+func (a *Analyzer) DumpStack(taint Taint) string {
 	str := ""
-	for i, item := range a.CallStack {
-		str += fmt.Sprintf("%d. Name: %s, Type: %s\n", i, item.Name, item.Type)
+	for i := len(a.CallStack) - 1; i >= 0; i-- {
+		str += "[" + a.CallStack[i].Type + "] " + a.CallStack[i].Name + " <- "
 	}
+	str += "[taint] " + taint.Name
 	return str
 }
 
@@ -88,20 +94,30 @@ func (a *Analyzer) Trace(taint Taint) {
 			for sink, _ := range a.Data[taint.Type].Args {
 				if item.Name == sink {
 					// send to results when a taint meets a sink
-					Results <- Result{Vertex: item.Vertex, Type: taint.Type, LastTaint: taint, Filename: a.Filename}
+					Results <- Result{Vertex: item.Vertex, Type: taint.Type, LastTaint: taint, Filename: a.Filename, Stack: a.DumpStack(taint)}
 				}
 			}
 			for _, sink := range a.Data[taint.Type].Sinks {
 				if item.Name == sink {
 					// send to results when a taint meets a sink
-					Results <- Result{Vertex: item.Vertex, Type: taint.Type, LastTaint: taint, Filename: a.Filename}
+					Results <- Result{Vertex: item.Vertex, Type: taint.Type, LastTaint: taint, Filename: a.Filename, Stack: a.DumpStack(taint)}
 				}
 			}
 		case "assign":
-			a.Tainted[Taint{Name: item.Name, Type: taint.Type, Scope: item.Scope, Vertex: item.Vertex, Parent: &taint}] = item.Name
+			a.AddTaint(Taint{Name: item.Name, Type: taint.Type, Scope: item.Scope, Vertex: item.Vertex, Parent: &taint, Stack: a.DumpStack(taint)})
 			return
 		case "break":
 			return
+		}
+	}
+}
+
+func (a *Analyzer) VarVertex(name string) {
+	for _, taint := range a.Tainted {
+		if taint.Name == name {
+			if a.CompareContexts(taint.Scope, a.CurrentContext) {
+				a.Trace(taint)
+			}
 		}
 	}
 }
@@ -115,11 +131,7 @@ func (a *Analyzer) ExprVariable(n *ast.ExprVariable) {
 	}
 	name := string(id.Value)
 
-	for taint, str := range a.Tainted {
-		if str == name {
-			a.Trace(taint)
-		}
-	}
+	a.VarVertex(name)
 }
 
 func (a *Analyzer) ExprPropertyFetch(n *ast.ExprPropertyFetch) {
@@ -129,11 +141,7 @@ func (a *Analyzer) ExprPropertyFetch(n *ast.ExprPropertyFetch) {
 	}
 	name := string(id.Value)
 
-	for taint, str := range a.Tainted {
-		if str == name {
-			a.Trace(taint)
-		}
-	}
+	a.VarVertex(name)
 }
 
 func (a *Analyzer) ExprFunctionCall(n *ast.ExprFunctionCall) {
@@ -146,11 +154,7 @@ func (a *Analyzer) ExprFunctionCall(n *ast.ExprFunctionCall) {
 		name += string(v.(*ast.NamePart).Value)
 	}
 
-	for taint, str := range a.Tainted {
-		if str == name {
-			a.Trace(taint)
-		}
-	}
+	a.VarVertex(name)
 }
 
 func (a *Analyzer) ExprMethodCall(n *ast.ExprMethodCall) {
@@ -161,14 +165,29 @@ func (a *Analyzer) ExprMethodCall(n *ast.ExprMethodCall) {
 
 	name := string(id.Value)
 
-	for taint, str := range a.Tainted {
-		if str == name {
-			a.Trace(taint)
-		}
-	}
+	a.VarVertex(name)
 }
 
 // auxiliary funcs
+
+func (a *Analyzer) AddTaint(add Taint) {
+	for _, taint := range a.Tainted {
+		if a.CompareTaints(add, taint) {
+			return
+		}
+	}
+
+	//log.Println("Tainted: ", add.Name, add.Type, &add.Scope)
+	a.Tainted = append(a.Tainted, add)
+}
+
+func (a *Analyzer) CompareTaints(t1 Taint, t2 Taint) bool {
+	return t1.Name == t2.Name && t1.Type == t2.Type && a.CompareContexts(t1.Scope, t2.Scope)
+}
+
+func (a *Analyzer) CompareContexts(c1 Context, c2 Context) bool {
+	return (c1.Block == c2.Block || c1.Block == "*" || c2.Block == "*") && (c1.Class == c2.Class || c1.Class == "*" || c2.Class == "*")
+}
 
 func (a *Analyzer) LoadData(filename string) {
 	file, err := os.Open(filename)
@@ -185,7 +204,7 @@ func (a *Analyzer) LoadData(filename string) {
 	// add sources to taint list
 	for t, vuln := range a.Data {
 		for _, source := range vuln.Sources {
-			a.Tainted[Taint{Name: source, Type: t, Scope: Context{Class: "", Block: ""}}] = source
+			a.AddTaint(Taint{Name: source, Type: t, Scope: Context{Class: "*", Block: "*"}})
 		}
 	}
 }
