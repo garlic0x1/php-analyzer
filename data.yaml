@@ -136,9 +136,9 @@ sqli:
     - "ingres_unbuffered_query"
     - "msql_db_query"
   filters:
+    - "MAGICQUOTES"
     - "json_encode"
     - "empty"
-    - "MAGICQUOTES"
     - "htmlspecialchars"
     - "absint"
     - "$wpdb->prepare"
