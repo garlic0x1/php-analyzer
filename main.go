@@ -88,7 +88,6 @@ func worker(depth int, datafile string) {
 		a := NewAnalyzer(filename, datafile)
 		t := NewTraverser(a)
 		for j := 0; j < depth; j++ {
-			println(j)
 			t.Traverse(root)
 		}
 	}

@@ -14,5 +14,5 @@ if (($_GET)) {
 
 $d = new Data;
 $t = $d->dangerous($_GET);
-query((int)$t);
+query($t);
 ?>

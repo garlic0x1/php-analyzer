@@ -1548,6 +1548,9 @@ func (t *Traverser) ScalarDnumber(n *ast.ScalarDnumber) {
 }
 
 func (t *Traverser) ScalarEncapsed(n *ast.ScalarEncapsed) {
+	t.v.Push(Item{Name: "MAGICQUOTES", Type: "filter", Vertex: n})
+	defer t.v.Pop()
+
 	n.Accept(t.v)
 
 	for _, nn := range n.Parts {
