@@ -22,17 +22,12 @@ import (
 )
 
 var (
-	Queue   = make(chan Task)
+	Queue   = make(chan string)
 	Results = make(chan Result)
 	sm      sync.Map
 	Files   = 0
 	Vulns   = 0
 )
-
-type Task struct {
-	Filename string
-	Vertex   ast.Vertex
-}
 
 type Result struct {
 	Vertex    ast.Vertex
@@ -62,43 +57,25 @@ func main() {
 
 }
 
-func workers(depth int, n int, datafile string) {
-	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+func worker(depth int, datafile string) {
 
-			for task := range Queue {
-				a := NewAnalyzer(task.Filename, datafile)
-				t := NewTraverser(a)
-				for j := 0; j < depth; j++ {
-					t.Traverse(task.Vertex)
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	close(Results)
-}
-
-func reader() {
+	// recover from parseutil.ParseFie() panic on bad syntax
 	defer func() {
 		if err := recover(); err != nil {
-			log.Println("recovering", err)
-			reader()
+			log.Println("RECOVERING:", err)
+			worker(depth, datafile)
 		}
 	}()
-	s := bufio.NewScanner(os.Stdin)
-	for s.Scan() {
-		filename := s.Text()
 
+	for filename := range Queue {
+		// read the file
 		content, err := readFile(filename)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
 
+		// convert PHP to AST
 		root, err := parseutil.ParseFile(content)
 		if err != nil {
 			log.Println(err)
@@ -107,7 +84,36 @@ func reader() {
 
 		Files++
 
-		Queue <- Task{Filename: filename, Vertex: root}
+		// create visitor
+		a := NewAnalyzer(filename, datafile)
+		t := NewTraverser(a)
+		for j := 0; j < depth; j++ {
+			println(j)
+			t.Traverse(root)
+		}
+	}
+}
+
+func workers(depth int, n int, datafile string) {
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
+			worker(depth, datafile)
+		}()
+	}
+	wg.Wait()
+	close(Results)
+}
+
+func reader() {
+	s := bufio.NewScanner(os.Stdin)
+	for s.Scan() {
+		filename := s.Text()
+
+		Queue <- filename
 	}
 	close(Queue)
 }
