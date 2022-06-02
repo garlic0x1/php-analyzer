@@ -3,6 +3,11 @@ Current performance:
 `2022/05/28 12:41:35 Scanned 4981 files    Found 428 vulns    In time 25.159522618s` 
   
 Output is the PHP representation of the vertex of the assignment or sink and it's line:char position, along with the traced stack for each step in the path.  
+
+To do:
+- HTML context awareness  
+- Don't traverse tree multiple times (and dont traverse dead code)  
+- Scan whole repos instead of files  
   
 Example:
 ```
