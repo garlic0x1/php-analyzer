@@ -15,26 +15,34 @@ Example:
 ```
 $ echo test.php | dataflow-analyzer -yaml
 file: test.php
-type: sqli
+type: xss
 path:
-- stack: '[sink] query <- [taint] $_GET'
-  code: query($_GET[]) 6:112
+- stack: '[assign] $user_input <- [taint] $_GET'
+  code: $user_input = $_GET['input'] 11:194
+- stack: '[assign] $improperly_filtered <- [filter] MAGICQUOTES <- [taint] $user_input'
+  code: $improperly_filtered = "$user_input" 12:224
+- stack: '[sink] echo <- [taint] $improperly_filtered'
+  code: |-
+    // this does alert because magic quotes dont stop xss
+    echo $improperly_filtered; 20:444
 
 file: test.php
 type: sqli
 path:
 - stack: '[assign] $t <- [assign] $param <- [taint] $_GET'
-  code: $d->dangerous($_GET) 16:201
+  code: $d->dangerous($_GET) 14:282
 - stack: '[assign] $temp <- [filter] unknown_filter_func <- [taint] $param'
   code: $temp = unknown_filter_func($param) 4:51
 - stack: '[assign] dangerous <- [taint] $temp'
-  code: return $temp; 7:130
+  code: return $temp; 7:174
 - stack: '[assign] $t <- [taint] dangerous'
-  code: $t = $d->dangerous($_GET) 16:196
+  code: $t = $d->dangerous($_GET) 14:277
 - stack: '[sink] query <- [taint] $t'
-  code: query($t) 17:223
+  code: |-
+    // alerts because taint follows through method call into $t
+    query($t) 23:532
 
-2022/06/01 18:09:36 Scanned 1 files	Found 2 vulns	In time 2.557277ms
+2022/06/01 18:42:23 Scanned 1 files	Found 2 vulns	In time 4.785042ms
 ```
 
 Help:
