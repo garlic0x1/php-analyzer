@@ -4,30 +4,28 @@ Current performance:
 
 Example:
 ```
-$ echo test.php | ./dataflow-analyzer -yaml
+$ echo test.php | dataflow-analyzer -yaml
 file: test.php
 type: sqli
 path:
 - stack: '[sink] query <- [taint] $_GET'
-  code: query($_GET[])
+  code: query($_GET[]) 6:112
 
 file: test.php
 type: sqli
 path:
-- stack: '[sink] query <- [taint] $t'
-  code: query($t)
-- stack: '[assign] $t <- [taint] dangerous'
-  code: $t = $d->dangerous($_GET)
-- stack: '[assign] dangerous <- [taint] $temp'
-  code: return $temp;
-- stack: '[assign] $temp <- [filter] unknown_filter_func <- [taint] $param'
-  code: $temp = unknown_filter_func($param)
 - stack: '[assign] $t <- [assign] $param <- [taint] $_GET'
-  code: $d->dangerous($_GET)
+  code: $d->dangerous($_GET) 16:201
+- stack: '[assign] $temp <- [filter] unknown_filter_func <- [taint] $param'
+  code: $temp = unknown_filter_func($param) 4:51
+- stack: '[assign] dangerous <- [taint] $temp'
+  code: return $temp; 7:130
+- stack: '[assign] $t <- [taint] dangerous'
+  code: $t = $d->dangerous($_GET) 16:196
+- stack: '[sink] query <- [taint] $t'
+  code: query($t) 17:223
 
-2022/05/28 10:21:13 Scanned 1 files
-Found 2 vulns
-
+2022/06/01 18:09:36 Scanned 1 files	Found 2 vulns	In time 2.557277ms
 ```
 
 Help:
@@ -35,11 +33,11 @@ Help:
 $ ./dataflow-analyzer -h
 Usage of ./dataflow-analyzer:
   -d int
-    	Number of times to traverse the tree (Tracing through function calls requires multiple passes) (default 5)
+    	Number of times to traverse the tree (Tracing through function calls requires multiple passes) (default 10)
   -f string
     	Specify a data file of sources, sinks, and filters (default "data.yaml")
   -t int
-    	Number of goroutines to use (default 10)
+    	Number of goroutines to use (default 100)
   -yaml
     	Output as YAML, (JSON by default)
 ```
