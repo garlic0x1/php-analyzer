@@ -39,8 +39,8 @@ type Result struct {
 }
 
 func main() {
-	depth := flag.Int("d", 5, "Number of times to traverse the tree (Tracing through function calls requires multiple passes)")
-	threads := flag.Int("t", 10, "Number of goroutines to use")
+	depth := flag.Int("d", 10, "Number of times to traverse the tree (Tracing through function calls requires multiple passes)")
+	threads := flag.Int("t", 100, "Number of goroutines to use")
 	datafile := flag.String("f", "data.yaml", "Specify a data file of sources, sinks, and filters")
 	fyaml := flag.Bool("yaml", false, "Output as YAML, (JSON by default)")
 	flag.Parse()
@@ -60,14 +60,14 @@ func main() {
 func worker(depth int, datafile string) {
 
 	// recover from parseutil.ParseFie() panic on bad syntax
-	defer func() {
-		if err := recover(); err != nil {
-			log.Println("RECOVERING:", err)
-			worker(depth, datafile)
-		}
-	}()
 
 	for filename := range Queue {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Println("RECOVERING:", err, "\tFILE:", filename)
+				worker(depth, datafile)
+			}
+		}()
 		// read the file
 		content, err := readFile(filename)
 		if err != nil {
@@ -78,7 +78,7 @@ func worker(depth int, datafile string) {
 		// convert PHP to AST
 		root, err := parseutil.ParseFile(content)
 		if err != nil {
-			log.Println(err)
+			log.Println(err, filename)
 			continue
 		}
 
@@ -130,6 +130,7 @@ func writer(fyaml bool) {
 			Code  string
 		}
 		var taintPath []tt
+		var reversed []tt
 		taint := result.LastTaint
 
 		o := bytes.NewBufferString("")
@@ -137,7 +138,7 @@ func writer(fyaml bool) {
 		//result.Vertex.Accept(f)
 		p := printer.NewPrinter(o).WithState(printer.PrinterStatePHP)
 		result.Vertex.Accept(p)
-		code := strings.TrimSpace(o.String())
+		code := fmt.Sprintf("%s %d:%d", strings.TrimSpace(o.String()), result.Vertex.GetPosition().StartLine, result.Vertex.GetPosition().StartPos)
 
 		type output struct {
 			File string
@@ -152,10 +153,14 @@ func writer(fyaml bool) {
 			p := printer.NewPrinter(o).WithState(printer.PrinterStatePHP)
 			//result.Vertex.Accept(f)
 			taint.Vertex.Accept(p)
-			taintstring := strings.TrimSpace(o.String())
+			taintstring := fmt.Sprintf("%s %d:%d", strings.TrimSpace(o.String()), taint.Vertex.GetPosition().StartLine, taint.Vertex.GetPosition().StartPos)
 			taintPath = append(taintPath, tt{Code: taintstring, Stack: taint.Stack})
 
 			taint = *taint.Parent
+		}
+
+		for i := len(taintPath) - 1; i >= 0; i-- {
+			reversed = append(reversed, taintPath[i])
 		}
 
 		var (
@@ -167,7 +172,7 @@ func writer(fyaml bool) {
 			bytes, err = json.Marshal(output{
 				File: result.Filename,
 				Type: result.Type,
-				Path: taintPath,
+				Path: reversed,
 			})
 			if err != nil {
 				log.Println(err)
@@ -176,7 +181,7 @@ func writer(fyaml bool) {
 			bytes, err = yaml.Marshal(output{
 				File: result.Filename,
 				Type: result.Type,
-				Path: taintPath,
+				Path: reversed,
 			})
 			if err != nil {
 				log.Println(err)

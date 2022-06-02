@@ -19,6 +19,7 @@ csrf:
     - "ifx_htmltbl_result"
   filters:
     - "json_encode"
+    - "wp_hash_password"
     - "empty"
     - "htmlspecialchars"
     - "htmlentities"
@@ -48,6 +49,7 @@ xss:
     - "ovrimos_result_all"
     - "ifx_htmltbl_result"
   filters:
+    - "wp_hash_password"
     - "json_encode"
     - "empty"
     - "htmlspecialchars"
@@ -136,6 +138,7 @@ sqli:
     - "ingres_unbuffered_query"
     - "msql_db_query"
   filters:
+    - "wp_hash_password"
     - "MAGICQUOTES"
     - "json_encode"
     - "empty"
@@ -186,6 +189,7 @@ lfi:
     - "require_once"
     - "fread"
   filters:
+    - "wp_hash_password"
     - "json_encode"
     - "empty"
     - "(int)"
@@ -256,6 +260,7 @@ lfd:
     - "yaml_parse_file"
     - "zip_open"
   filters:
+    - "wp_hash_password"
     - "json_encode"
     - "empty"
     - "(int)"
@@ -291,6 +296,7 @@ rce:
     - "php://input"
     - "call_user_func"
   filters:
+    - "wp_hash_password"
     - "json_encode"
     - "empty"
     - "(int)"

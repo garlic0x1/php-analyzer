@@ -1061,6 +1061,8 @@ func (t *Traverser) ExprPreInc(n *ast.ExprPreInc) {
 }
 
 func (t *Traverser) ExprPrint(n *ast.ExprPrint) {
+	t.v.Push(Item{Name: "print", Type: "sink", Vertex: n})
+	defer t.v.Pop()
 	n.Accept(t.v)
 
 	t.Traverse(n.Expr)
