@@ -735,6 +735,9 @@ func (t *Traverser) ExprEval(n *ast.ExprEval) {
 }
 
 func (t *Traverser) ExprExit(n *ast.ExprExit) {
+	t.v.Push(Item{Name: string(n.ExitTkn.Value), Type: "sink", Vertex: n})
+	defer t.v.Pop()
+
 	n.Accept(t.v)
 
 	t.Traverse(n.Expr)

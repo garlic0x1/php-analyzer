@@ -187,7 +187,7 @@ lfi:
     - "include_once"
     - "require"
     - "require_once"
-    - "fread"
+      #- "fread"
   filters:
     - "wp_hash_password"
     - "json_encode"
