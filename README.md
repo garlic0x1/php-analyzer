@@ -1,4 +1,4 @@
-# dataflow-analyzer
+# php-analyzer
 Current performance:  
 `2022/05/28 12:41:35 Scanned 4981 files    Found 428 vulns    In time 25.159522618s` 
   
@@ -13,7 +13,7 @@ To do:
   
 Example:
 ```
-$ echo test.php | dataflow-analyzer -yaml
+$ echo test.php | php-analyzer -yaml
 file: test.php
 type: xss
 path:
@@ -47,8 +47,8 @@ path:
 
 Help:
 ```
-$ ./dataflow-analyzer -h
-Usage of ./dataflow-analyzer:
+$ ./php-analyzer -h
+Usage of ./php-analyzer:
   -d int
     	Number of times to traverse the tree (Tracing through function calls requires multiple passes) (default 10)
   -f string
