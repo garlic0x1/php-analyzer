@@ -1,4 +1,4 @@
-module dataflow-analyzer
+module php-analyzer
 
 go 1.18
 
